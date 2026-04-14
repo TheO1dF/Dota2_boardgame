@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>DOTA2 桌游 - 终极机制完全版</title>
+    <style>
+        :root {
+            --radiant: #2ecc71; --dire: #e74c3c;
+            --bg-base: #121212; --bg-panel: #1e1e24;
+            --border-color: #333; --gold: #f1c40f;
+            --text-main: #ecf0f1; --text-muted: #95a5a6;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-base); color: var(--text-main);
+            margin: 0; padding: 0; height: 100vh; overflow: hidden;
+            display: flex; flex-direction: column; user-select: none;
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+        .btn {
+            background: #2980b9; color: white; border: none; padding: 10px 20px;
+            border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s;
+        }
+        .btn:hover:not(:disabled) { background: #3498db; transform: translateY(-2px); }
+        .btn:disabled { background: #555; cursor: not-allowed; opacity: 0.7; }
+        .btn-action { background: #d35400; }
+        .btn-action:hover:not(:disabled) { background: #e67e22; }
+
+        /* ================= 准备大厅 ================= */
+        #setup-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #2c3e50 0%, #1a1a1a 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; transition: opacity 0.5s;
+        }
+        .setup-title { font-size: 36px; color: var(--gold); margin-bottom: 30px; text-shadow: 0 0 10px rgba(241,196,15,0.5); }
+        .setup-container { display: flex; gap: 40px; }
+        .hero-card { background: var(--bg-panel); border: 2px solid var(--border-color); border-radius: 10px; padding: 20px; width: 350px; text-align: center; }
+        .hero-card.p1 { border-top: 5px solid var(--radiant); }
+        .hero-card.p2 { border-top: 5px solid var(--dire); }
+        .skill-option { background: #2a2a2a; border: 2px solid #444; padding: 10px; border-radius: 5px; margin-top: 10px; cursor: pointer; transition: 0.2s; text-align: left; }
+        .skill-option:hover { border-color: var(--gold); }
+        .skill-option.selected { border-color: var(--gold); background: rgba(241,196,15,0.1); }
+        
+        /* ================= 游戏主界面 ================= */
+        #game-screen { display: none; flex-direction: column; height: 100%; }
+
+        .top-bar { height: 60px; background: #1a1a20; display: flex; justify-content: space-between; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+        .turn-info { font-size: 20px; font-weight: bold; display: flex; align-items: center; gap: 15px; }
+        .round-badge { background: #333; padding: 4px 10px; border-radius: 15px; font-size: 14px; color: var(--gold); }
+
+        .main-layout { display: flex; flex: 1; overflow: hidden; }
+
+        .left-sidebar { width: 260px; background: #15151a; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
+        .player-panel { flex: 1; padding: 15px; display: flex; flex-direction: column; border-bottom: 1px solid #222; position: relative; }
+        .player-panel.p2 { background: linear-gradient(180deg, rgba(231,76,60,0.05) 0%, transparent 100%); }
+        .player-panel.p1 { background: linear-gradient(0deg, rgba(46,204,113,0.05) 0%, transparent 100%); border-bottom: none; }
+        .avatar-box { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .avatar { width: 50px; height: 50px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; border: 2px solid #555; }
+        .avatar.p1-av { background: #16a085; border-color: var(--radiant); }
+        .avatar.p2-av { background: #c0392b; border-color: var(--dire); }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; }
+        .stats-grid span { color: var(--text-muted); }
+        .stats-grid b { float: right; }
+
+        .center-board { flex: 1; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #25252b 0%, #121212 100%); position: relative; }
+        .board-container { position: relative; margin: 30px 0; }
+        #board { display: grid; grid-template-columns: repeat(5, 100px); grid-template-rows: repeat(4, 100px); gap: 10px; position: relative; z-index: 2; }
+        .cell { background: rgba(40,40,45,0.8); border: 2px solid #444; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        .cell:hover { border-color: var(--gold); background: rgba(60,60,65,0.9); }
+        .cell.highlight { border-color: var(--radiant); box-shadow: 0 0 15px rgba(46,204,113,0.4); }
+        .cell.highlight-attack { border-color: var(--dire); box-shadow: 0 0 15px rgba(231,76,60,0.4); background: rgba(231,76,60,0.1); }
+        .cell.highlight-respawn { border-color: #9b59b6; box-shadow: 0 0 20px #9b59b6; animation: pulse 1.5s infinite; background: rgba(155,89,182,0.2); }
+        
+        .tower { width: 100px; height: 100px; background: #1a1a1a; border: 3px solid; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; position: absolute; left: 215px; z-index: 5; cursor: pointer; transition: 0.2s; box-shadow: 0 5px 15px rgba(0,0,0,0.6); }
+        .tower:hover { transform: scale(1.05); }
+        .tower.highlight-attack { border-color: var(--dire) !important; box-shadow: 0 0 20px var(--dire); }
+        #tower-p2 { top: -120px; border-color: var(--dire); color: var(--dire); }
+        #tower-p1 { bottom: -120px; border-color: var(--radiant); color: var(--radiant); }
+
+        .unit { width: 85%; padding: 6px; border-radius: 6px; text-align: center; font-weight: bold; font-size: 13px; position: relative; text-shadow: 1px 1px 2px black; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .unit.hero { box-shadow: 0 0 10px var(--gold); border-width: 2px; }
+        .unit-p1 { background: linear-gradient(135deg, #16a085, #0e6655); border: 1px solid var(--radiant); }
+        .unit-p2 { background: linear-gradient(135deg, #c0392b, #7b241c); border: 1px solid var(--dire); }
+        .hp-bar { background: rgba(0,0,0,0.6); border-radius: 3px; padding: 2px 4px; color: var(--gold); font-size: 11px; margin-top: 4px; display: inline-block; }
+        .equip-indicator { position: absolute; top: -6px; right: -6px; background: var(--gold); color: #000; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+
+        .right-sidebar { width: 280px; background: #15151a; border-left: 1px solid var(--border-color); display: flex; flex-direction: column; }
+        .shop-area { padding: 15px; border-bottom: 1px solid #222; }
+        .section-title { font-size: 15px; font-weight: bold; color: var(--gold); margin-bottom: 10px; display: flex; justify-content: space-between;}
+        .shop-list { display: flex; flex-direction: column; gap: 6px; }
+        .shop-item { background: #222; padding: 8px; border-radius: 4px; border: 1px dashed #555; cursor: pointer; position: relative; display: flex; flex-direction: column; justify-content: center; transition: 0.2s; }
+        .shop-item:hover { border-color: var(--gold); background: #2a2a2a; }
+        .shop-price { position: absolute; right: 8px; top: 8px; color: var(--gold); font-size: 12px; font-weight: bold; }
+        .log-area { flex: 1; padding: 15px; display: flex; flex-direction: column; overflow: hidden; }
+        #log-content { flex: 1; background: #0a0a0c; color: #8fbc8f; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 12px; border-radius: 4px; border: 1px solid #333; }
+
+        .bottom-panel { height: 210px; background: #1a1a20; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px 20px; flex-shrink: 0; }
+        .zone-header { font-size: 14px; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; color: var(--text-muted); }
+        .cards-layout { display: flex; gap: 20px; flex: 1; overflow: hidden; }
+        .hand-zone { flex: 3; display: flex; gap: 12px; overflow-x: auto; align-items: center; padding-bottom: 5px; }
+        .play-zone { flex: 1; border-left: 2px dashed #333; padding-left: 20px; display: flex; gap: 10px; overflow-x: auto; align-items: center; opacity: 0.8; }
+        
+        .card { width: 100px; height: 140px; background: #e0e0e0; color: #111; border-radius: 6px; padding: 8px; cursor: pointer; border: 2px solid #999; display: flex; flex-direction: column; position: relative; transition: 0.2s; flex-shrink: 0; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+        .card:hover { transform: translateY(-8px); border-color: var(--gold); }
+        .card.selected { border-color: var(--dire); transform: translateY(-12px); box-shadow: 0 8px 16px rgba(231,76,60,0.5); }
+        .card-title { font-size: 13px; font-weight: bold; text-align: center; border-bottom: 1px solid #999; margin-bottom: 4px; padding-bottom: 4px; }
+        .card-desc { flex: 1; font-size: 11px; text-align: center; display: flex; align-items: center; justify-content: center; }
+        .card-cost { position: absolute; top: -8px; right: -8px; background: #2980b9; color: white; width: 24px; height: 24px; border-radius: 50%; text-align: center; line-height: 24px; font-size: 12px; font-weight: bold; border: 2px solid white; }
+
+        #cancel-btn { position: fixed; bottom: 230px; left: 50%; transform: translateX(-50%); z-index: 50; display: none; border-radius: 20px; padding: 10px 30px; font-size: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        
+        #overlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); z-index: 99; }
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1e1e24; border: 1px solid var(--gold); padding: 25px; border-radius: 8px; z-index: 100; min-width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        .modal-close { position: absolute; top: 10px; right: 15px; cursor: pointer; color: var(--dire); font-size: 18px; }
+        .equip-tag { background: #333; padding: 6px; border-radius: 4px; font-size: 12px; border-left: 3px solid var(--gold); margin-top: 6px; }
+
+        @keyframes pulse { 0% { box-shadow: 0 0 10px #9b59b6; } 50% { box-shadow: 0 0 25px #9b59b6; } 100% { box-shadow: 0 0 10px #9b59b6; } }
+    </style>
+</head>
+<body>
+
+<!-- ================= 准备大厅 ================= -->
+<div id="setup-screen">
+    <div class="setup-title">DOTA2 DBG - 赛前准备</div>
+    <div class="setup-container">
+        <div class="hero-card p2">
+            <h2 style="color: var(--dire); margin-top:0;">斧王 (敌方)</h2>
+            <div style="font-size: 14px; color: #aaa; margin-bottom: 15px;">生命: 5 | 攻击: 2 | 法力: 2</div>
+            <div style="text-align: left; font-weight: bold; color: var(--gold);">选择开局能力：</div>
+            <div class="skill-option selected" id="opt-p_axe_helix" onclick="selectSkill('p2', 'p_axe_helix')">
+                <b>被动：反击螺旋</b><br><span style="font-size:12px; color:#aaa;">每次受击对周围8格敌方造成2魔法伤害。</span>
+            </div>
+            <div class="skill-option" id="opt-s_axe_hunger" onclick="selectSkill('p2', 's_axe_hunger')">
+                <b>战斗饥渴 (1费)</b><br><span style="font-size:12px; color:#aaa;">给相邻敌方装备，己方回合末造成1伤害。</span>
+            </div>
+            <div class="skill-option" id="opt-s_axe_call" onclick="selectSkill('p2', 's_axe_call')">
+                <b>狂战士之吼 (2费)</b><br><span style="font-size:12px; color:#aaa;">强迫周围敌军攻击斧王触发反击。</span>
+            </div>
+        </div>
+        <div class="hero-card p1">
+            <h2 style="color: var(--radiant); margin-top:0;">剑圣 (己方)</h2>
+            <div style="font-size: 14px; color: #aaa; margin-bottom: 15px;">生命: 4 | 攻击: 2 | 法力: 2</div>
+            <div style="text-align: left; font-weight: bold; color: var(--gold);">选择开局能力：</div>
+            <div class="skill-option selected" id="opt-p_jugg_dance" onclick="selectSkill('p1', 'p_jugg_dance')">
+                <b>被动：剑舞</b><br><span style="font-size:12px; color:#aaa;">行动卡在移动后可额外选择相邻敌方攻击。</span>
+            </div>
+            <div class="skill-option" id="opt-s_jugg_fury" onclick="selectSkill('p1', 's_jugg_fury')">
+                <b>剑刃风暴 (2费)</b><br><span style="font-size:12px; color:#aaa;">对周围8格敌方造成2魔法伤害。</span>
+            </div>
+            <div class="skill-option" id="opt-s_jugg_ward" onclick="selectSkill('p1', 's_jugg_ward')">
+                <b>治疗守卫 (2费)</b><br><span style="font-size:12px; color:#aaa;">放置守卫，回合末周围友军回血。</span>
+            </div>
+        </div>
+    </div>
+    <button class="btn" style="margin-top: 40px; font-size: 20px; padding: 15px 40px;" onclick="startGame()">开始对线</button>
+</div>
+
+<!-- ================= 游戏主界面 ================= -->
+<div id="game-screen">
+    <div class="top-bar">
+        <div class="turn-info">
+            <span class="round-badge">第 <span id="round-num">1</span> 轮次</span>
+            <span id="turn-indicator">等待开始...</span>
+        </div>
+        <button class="btn btn-action" id="btn-pass" onclick="passRound()">结束本轮出牌</button>
+    </div>
+
+    <div class="main-layout">
+        <!-- 左侧：玩家面板 -->
+        <div class="left-sidebar">
+            <div class="player-panel p2">
+                <div style="position:absolute; top:15px; right:15px; font-size:12px; color:var(--dire);">阵亡: <span id="deaths-p2">0</span>/2</div>
+                <div class="avatar-box">
+                    <div class="avatar p2-av">斧</div>
+                    <div>
+                        <b style="color:var(--dire); font-size:16px;">斧王</b> <span id="level-p2" style="color:var(--gold); font-size:12px;">Lv.1</span><br>
+                        <span id="passive-p2" style="font-size:11px;color:#aaa;">反击螺旋(未激活)</span>
+                    </div>
+                </div>
+                <div class="stats-grid">
+                    <div><span>法力</span><b id="p2-mana" style="color:#3498db;">2</b></div>
+                    <div><span>战利品</span><b id="p2-loot" style="color:var(--gold);">0</b></div>
+                    <div><span>牌库</span><b id="p2-deck">0</b></div>
+                    <div><span>弃牌</span><b id="p2-discard">0</b></div>
+                </div>
+            </div>
+            <div class="player-panel p1">
+                <div style="position:absolute; top:15px; right:15px; font-size:12px; color:var(--radiant);">阵亡: <span id="deaths-p1">0</span>/2</div>
+                <div class="avatar-box">
+                    <div class="avatar p1-av">剑</div>
+                    <div>
+                        <b style="color:var(--radiant); font-size:16px;">剑圣</b> <span id="level-p1" style="color:var(--gold); font-size:12px;">Lv.1</span><br>
+                        <span id="passive-p1" style="font-size:11px;color:#aaa;">剑舞(未激活)</span>
+                    </div>
+                </div>
+                <div class="stats-grid">
+                    <div><span>法力</span><b id="p1-mana" style="color:#3498db;">2</b></div>
+                    <div><span>战利品</span><b id="p1-loot" style="color:var(--gold);">0</b></div>
+                    <div><span>牌库</span><b id="p1-deck">0</b></div>
+                    <div><span>弃牌</span><b id="p1-discard">0</b></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 中间：战场 -->
+        <div class="center-board">
+            <div class="board-container">
+                <div id="tower-p2" class="tower" onclick="towerClicked('p2')">敌方塔<br><span id="hp-tower-p2" style="color:var(--gold);">10</span></div>
+                <div id="board"></div>
+                <div id="tower-p1" class="tower" onclick="towerClicked('p1')">己方塔<br><span id="hp-tower-p1" style="color:var(--gold);">10</span></div>
+            </div>
+        </div>
+
+        <!-- 右侧：商店与日志 -->
+        <div class="right-sidebar">
+            <div class="shop-area">
+                <div class="section-title">
+                    <span>野外商店</span>
+                    <button class="btn" style="padding: 2px 8px; font-size: 11px; background:#8e44ad;" onclick="upgradeHero()">升级(2战利品)</button>
+                </div>
+                <div class="shop-list" id="shop-container"></div>
+            </div>
+            <div class="log-area">
+                <div class="section-title">战斗日志</div>
+                <div id="log-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部：手牌区 -->
+    <div class="bottom-panel">
+        <div class="zone-header">
+            <span id="hand-owner-text">己方 手牌区</span>
+            <span>本轮展示区</span>
+        </div>
+        <div class="cards-layout">
+            <div class="hand-zone" id="current-hand"></div>
+            <div class="play-zone" id="current-playarea"></div>
+        </div>
+    </div>
+</div>
+
+<button id="cancel-btn" class="btn btn-action" onclick="cancelAction()">取消行动</button>
+
+<!-- 模态框与遮罩层 -->
+<div id="overlay" onclick="closeAllModals()"></div>
+
+<div id="unit-modal" class="modal">
+    <span class="modal-close" onclick="closeAllModals()">✖</span>
+    <h3 id="modal-title" style="margin-top:0; color:var(--gold); border-bottom:1px solid #444; padding-bottom:10px;"></h3>
+    <div id="modal-stats" style="font-size: 14px; margin-bottom: 10px;"></div>
+    <div id="modal-passive" style="font-size: 12px; color:var(--text-muted);"></div>
+    <div style="border-top: 1px dashed #555; padding-top: 10px; margin-top: 10px; font-size: 13px;"><b>装备列表：</b></div>
+    <div id="modal-equips"></div>
+</div>
+
+<div id="upgrade-modal" class="modal" style="min-width: 350px;">
+    <span class="modal-close" onclick="closeAllModals()">✖</span>
+    <h3 style="margin-top:0; color:var(--gold); border-bottom:1px solid #444; padding-bottom:10px;">英雄升级</h3>
+    <div style="font-size:13px; margin-bottom:15px; color:#ccc;">请选择要学习的技能（主动技能洗入牌库底，被动直接生效）：</div>
+    <div id="upgrade-options" style="display:flex; flex-direction:column; gap:10px;"></div>
+</div>
+
+<script>
+// ================= 数据字典 =================
+const MAX_HP_TOWER = 10;
+const INIT_DECK = ['action', 'action', 'action', 'mango', 'mango', 'salve'];
+const equipPool = ['e_tango', 'e_branch', 'e_branch', 'e_claw', 'e_sword'];
+
+const cardsData = {
+    'action': { name: '行动卡', desc: '己方非士兵移动一格，或对相邻单位/塔造成伤害。', type: 'action' },
+    'mango': { name: '芒果', desc: '增加 1 点法力值。', type: 'spell' },
+    'salve': { name: '回复药水', desc: '英雄恢复 1 点生命。', type: 'spell' },
+    'e_tango': { name: '树之祭祀', price: 1, desc: '己方回合结束时英雄回1血。', type: 'equip' },
+    'e_branch': { name: '铁枝树干', price: 1, desc: '攻击+1，生命上限+1。', type: 'equip', atkBonus: 1, hpBonus: 1 },
+    'e_claw': { name: '攻击之爪', price: 1, desc: '攻击+2。', type: 'equip', atkBonus: 2, hpBonus: 0 },
+    'e_sword': { name: '阔剑', price: 2, desc: '攻击+3。', type: 'equip', atkBonus: 3, hpBonus: 0 },
+    
+    // 剑圣技能池
+    'p_jugg_dance': { name: '被动：剑舞', type: 'passive', desc: '行动卡在移动后可额外进行一次相邻攻击。' },
+    's_jugg_fury': { name: '剑刃风暴', cost: 2, desc: '对周围8格敌方造成2魔法伤害。', type: 'skill' },
+    's_jugg_ward': { name: '治疗守卫', cost: 2, desc: '相邻空位召唤，回合末周围友军回1血。', type: 'skill' },
+    's_jugg_omni': { name: '无敌斩', cost: 4, desc: '终极技能：对随机敌方斩击4次。', type: 'skill' },
+    
+    // 斧王技能池
+    'p_axe_helix': { name: '被动：反击螺旋', type: 'passive', desc: '每次受击后对周围8格敌方造成2魔法伤害。' },
+    's_axe_call': { name: '狂战士之吼', cost: 2, desc: '迫使周围敌军攻击斧王。', type: 'skill' },
+    's_axe_hunger': { name: '战斗饥渴', cost: 1, desc: '装备相邻敌方，己方回合末造成1伤害。击杀后移除。', type: 'skill' },
+    's_axe_culling': { name: '淘汰之刃', cost: 3, desc: '终极技能：立刻斩杀相邻生命低于斧王的单位。', type: 'skill' }
+};
+
+// ================= 游戏状态 =================
+let state = {
+    phase: 'setup', 
+    roundNum: 1,
+    turn: 'p1',
+    respawnQueue: [],
+    passedRound: { p1: false, p2: false },
+    shop: [null, null, null, null, null],
+    board: Array(4).fill(null).map(() => Array(5).fill(null)),
+    selectedCardIndex: -1,
+    selectedUnitPos: null,
+    pendingSkill: null,
+    
+    setupChoices: { p1: 'p_jugg_dance', p2: 'p_axe_helix' }, 
+
+    players: {
+        p1: {
+            id: 'p1', name: '剑圣', level: 1, hasPassive: false,
+            tower: { type: 'tower', owner: 'p1', name: '己方防御塔', hp: MAX_HP_TOWER, r: 4, c: 2 },
+            hero: { type: 'hero', name: '剑圣', maxHp: 4, hp: 4, baseAtk: 2, maxMana: 2, owner: 'p1', equips: [] },
+            mana: 2, loot: 0, heroDeaths: 0, deck: [], hand: [], playArea: [], discard: [], 
+            skillPool: [], ultimateSkill: 's_jugg_omni'
+        },
+        p2: {
+            id: 'p2', name: '斧王', level: 1, hasPassive: false,
+            tower: { type: 'tower', owner: 'p2', name: '敌方防御塔', hp: MAX_HP_TOWER, r: -1, c: 2 },
+            hero: { type: 'hero', name: '斧王', maxHp: 5, hp: 5, baseAtk: 2, maxMana: 2, owner: 'p2', equips: [] },
+            mana: 2, loot: 0, heroDeaths: 0, deck: [], hand: [], playArea: [], discard: [], 
+            skillPool: [], ultimateSkill: 's_axe_culling'
+        }
+    }
+};
+
+// ================= 准备阶段逻辑 =================
+function selectSkill(pid, skillId) {
+    state.setupChoices[pid] = skillId;
+    let options = pid === 'p1' ? ['p_jugg_dance', 's_jugg_fury', 's_jugg_ward'] : ['p_axe_helix', 's_axe_hunger', 's_axe_call'];
+    options.forEach(opt => document.getElementById(`opt-${opt}`).classList.remove('selected'));
+    document.getElementById(`opt-${skillId}`).classList.add('selected');
+}
+
+function startGame() {
+    document.getElementById('setup-screen').style.opacity = '0';
+    setTimeout(() => {
+        document.getElementById('setup-screen').style.display = 'none';
+        document.getElementById('game-screen').style.display = 'flex';
+        
+        ['p1', 'p2'].forEach(pid => {
+            let p = state.players[pid];
+            let allBasic = pid === 'p1' ? ['p_jugg_dance', 's_jugg_fury', 's_jugg_ward'] : ['p_axe_helix', 's_axe_hunger', 's_axe_call'];
+            p.skillPool = allBasic.filter(s => s !== state.setupChoices[pid]);
+            
+            p.deck = shuffle([...INIT_DECK]);
+            let choiceType = cardsData[state.setupChoices[pid]].type;
+            
+            if(choiceType === 'passive') {
+                p.hasPassive = true;
+                log(`${p.name} 激活了【${cardsData[state.setupChoices[pid]].name}】。牌库中无额外技能。`);
+            } else {
+                p.deck.push(state.setupChoices[pid]);
+                log(`${p.name} 的初始牌库已混入技能【${cardsData[state.setupChoices[pid]].name}】。`);
+            }
+            p.deck = shuffle(p.deck);
+        });
+        
+        state.board[3][1] = { ...state.players.p1.hero };
+        state.board[0][3] = { ...state.players.p2.hero };
+        startRound();
+    }, 500);
+}
+
+// ================= RPG 升级逻辑 =================
+function upgradeHero() {
+    if(state.phase !== 'idle') return;
+    let p = state.players[state.turn];
+    if(p.loot < 2) return alert("战利品不足(需要2个)！");
+    if(p.level >= 4) return alert("英雄已达到满级！");
+    
+    state.phase = 'wait_upgrade';
+    let container = document.getElementById('upgrade-options');
+    container.innerHTML = '';
+    
+    let available = [...p.skillPool];
+    if(p.level === 3) available.push(p.ultimateSkill); // 升级到4级解锁终极技能
+    
+    available.forEach(skillId => {
+        let c = cardsData[skillId];
+        let el = document.createElement('div'); el.className = 'skill-option';
+        el.innerHTML = `<b>${c.name}</b> (${c.type === 'passive' ? '被动' : c.cost + '费'})<br><span style="font-size:12px; color:#aaa;">${c.desc}</span>`;
+        el.onclick = () => confirmUpgrade(skillId);
+        container.appendChild(el);
+    });
+    
+    document.getElementById('upgrade-modal').style.display = 'block';
+    document.getElementById('overlay').style.display = 'block';
+}
+
+function confirmUpgrade(skillId) {
+    let p = state.players[state.turn];
+    p.loot -= 2; p.level++;
+    
+    if(cardsData[skillId].type === 'passive') {
+        p.hasPassive = true;
+        log(`⬆️ ${p.name} 升到了 ${p.level} 级，解锁了【${cardsData[skillId].name}】！`);
+    } else {
+        p.deck.unshift(skillId);
+        log(`⬆️ ${p.name} 升到了 ${p.level} 级，学会了【${cardsData[skillId].name}】，已放入牌库底。`);
+    }
+    
+    if(skillId !== p.ultimateSkill) p.skillPool = p.skillPool.filter(s => s !== skillId);
+    
+    closeAllModals();
+    endTurn();
+}
+
+// ================= 核心流转 =================
+function getUnitStat(u, stat) {
+    if(u.type === 'tower') return u[stat];
+    let base = u[stat === 'atk' ? 'baseAtk' : 'maxHp'];
+    let bonus = 0;
+    if(u.equips) u.equips.forEach(eid => { if(cardsData[eid][stat+'Bonus']) bonus += cardsData[eid][stat+'Bonus']; });
+    return base + bonus;
+}
+
+function startRound() {
+    state.phase = 'idle';
+    log(`\n--- 第 ${state.roundNum} 轮次 开始 ---`);
+    for(let i=0; i<5; i++) { if(!state.shop[i]) state.shop[i] = equipPool[Math.floor(Math.random() * equipPool.length)]; }
+
+    moveMinions();
+    if(!state.board[3][2]) state.board[3][2] = createMinion('p1');
+    if(!state.board[0][2]) state.board[0][2] = createMinion('p2');
+    
+    processRespawnQueueOrContinue();
+}
+
+function processRespawnQueueOrContinue() {
+    if(state.respawnQueue.length > 0) {
+        state.phase = 'wait_respawn'; updateUI();
+        log(`【等待复活】请 ${state.players[state.respawnQueue[0]].name} 部署英雄。`); return;
+    }
+    state.phase = 'idle'; 
+    drawCards('p1', 5); drawCards('p2', 5);
+    state.turn = state.roundNum % 2 !== 0 ? 'p1' : 'p2'; 
+    state.passedRound = { p1: false, p2: false };
+    updateUI();
+}
+
+function endTurn() {
+    if(state.phase !== 'wait_action_attack_after_move') triggerTurnEndEffects(state.turn);
+    
+    state.selectedCardIndex = -1; state.phase = 'idle'; state.selectedUnitPos = null; state.pendingSkill = null;
+    if (state.phase === 'game_over') return;
+
+    let next = state.turn === 'p1' ? 'p2' : 'p1';
+    if (!state.passedRound[next]) state.turn = next; 
+    else if (state.passedRound[state.turn]) { triggerRoundEndPhase(); return; }
+    updateUI();
+}
+
+function passRound() {
+    if(state.phase !== 'idle') return;
+    state.passedRound[state.turn] = true;
+    log(`[${state.players[state.turn].name}] 结束本轮行动。`);
+    endTurn();
+}
+
+function triggerRoundEndPhase() {
+    state.phase = 'resolving_round'; updateUI(); 
+    log(`\n>>> 轮次结算阶段 <<<`);
+    
+    for(let r=0; r<4; r++) {
+        for(let c=0; c<5; c++) {
+            let u = state.board[r][c];
+            if(u && u.type === 'minion') {
+                let tr = u.owner === 'p1' ? r - 1 : r + 1;
+                let target = null;
+                if(tr === -1 && c === 2) target = state.players.p2.tower;
+                else if(tr === 4 && c === 2) target = state.players.p1.tower;
+                else if(tr >= 0 && tr < 4) target = state.board[tr][c];
+
+                if(target && target.owner !== u.owner) {
+                    log(`${u.owner==='p1'?'己方':'敌方'}士兵 [被动] 对 ${target.name} 造成 1 伤害！`);
+                    dealDamage(target, tr, c, 1, {owner: u.owner}, u.owner);
+                }
+            }
+        }
+    }
+
+    for(let r=0; r<4; r++) {
+        for(let c=0; c<5; c++) {
+            let u = state.board[r][c];
+            if(u) {
+                if(u.name === '治疗守卫') state.board[r][c] = null;
+                if(u.equips && u.equips.includes('s_axe_hunger')) {
+                    u.equips = u.equips.filter(e => e !== 's_axe_hunger');
+                    state.players.p2.discard.push('s_axe_hunger');
+                    log(`轮次结束，${u.name} 身上的【战斗饥渴】被弃置。`);
+                }
+            }
+        }
+    }
+
+    if(state.phase === 'game_over') return;
+
+    setTimeout(() => {
+        ['p1', 'p2'].forEach(pid => {
+            let p = state.players[pid];
+            p.discard.push(...p.hand, ...p.playArea);
+            p.hand = []; p.playArea = [];
+        });
+        state.roundNum++; startRound();
+    }, 2000);
+}
+
+// ================= 战场机制 =================
+function dealDamage(target, r, c, dmg, sourceUnit, sourcePid, isPassive = false) {
+    if(state.phase === 'game_over') return;
+    target.hp -= dmg;
+
+    // 斧王被动触发：反击螺旋
+    if (!isPassive && target.type === 'hero' && target.owner === 'p2' && state.players.p2.hasPassive) {
+        log(`🪓 斧王受到伤害，触发【反击螺旋】！`);
+        let hPos = findHeroPos('p2');
+        if (hPos) {
+            getAdjacentCells(hPos.r, hPos.c).forEach(pos => {
+                let t = state.board[pos.r][pos.c];
+                if (t && t.owner !== 'p2') dealDamage(t, pos.r, pos.c, 2, target, 'p2', true); 
+            });
+        }
+    }
+
+    if(target.hp <= 0) {
+        log(`💀 ${target.name} 被击杀了！`);
+        
+        if(sourceUnit && sourceUnit.equips) {
+            let hIdx = sourceUnit.equips.indexOf('s_axe_hunger');
+            if(hIdx !== -1) { 
+                sourceUnit.equips.splice(hIdx, 1); state.players.p2.discard.push('s_axe_hunger');
+                log(`✨ ${sourceUnit.name} 击杀单位摆脱了【战斗饥渴】！`); 
+            }
+        }
+
+        if(target.equips && target.equips.length > 0) {
+            target.equips.forEach(eid => {
+                let owner = (eid.startsWith('s_axe')) ? 'p2' : (eid.startsWith('s_jugg') ? 'p1' : target.owner);
+                if (state.players[owner]) state.players[owner].discard.push(eid);
+            });
+            log(`已弃置 ${target.name} 身上的所有状态卡。`);
+        }
+
+        if (target.type === 'tower') {
+            document.getElementById(`hp-tower-${target.owner}`).innerText = 0;
+            state.phase = 'game_over'; updateUI();
+            setTimeout(() => { alert(`${target.owner === 'p1' ? '己方' : '敌方'}防御塔被摧毁，游戏结束！`); }, 500);
+            return;
+        }
+
+        state.board[r][c] = null;
+        if(target.type === 'minion' || target.type === 'ward') {
+            let killer = sourcePid.startsWith('tower') ? sourcePid.split('_')[1] : sourcePid;
+            state.players[killer].loot++;
+        } else if (target.type === 'hero') {
+            state.players[target.owner].heroDeaths++;
+            if(state.players[target.owner].heroDeaths >= 2) {
+                state.phase = 'game_over'; updateUI();
+                setTimeout(() => alert(`${target.name} 阵亡两次，游戏结束！`), 500);
+            } else { state.respawnQueue.push(target.owner); }
+        }
+    }
+}
+
+function checkTowerDamage(r, c, u) {
+    if(u.owner === 'p1' && r <= 1) { log(`⚡ 敌塔对进入领域的 ${u.name} 造成1伤害！`); dealDamage(u, r, c, 1, state.players.p2.tower, 'tower_p2'); }
+    if(u.owner === 'p2' && r >= 2) { log(`⚡ 己塔对进入领域的 ${u.name} 造成1伤害！`); dealDamage(u, r, c, 1, state.players.p1.tower, 'tower_p1'); }
+}
+
+function moveMinions() {
+    for(let r=0; r<=3; r++){
+        for(let c=0; c<5; c++){
+            let u = state.board[r][c];
+            if(u && u.type==='minion' && u.owner==='p1' && r>0 && !state.board[r-1][c]){ state.board[r-1][c]=u; state.board[r][c]=null; checkTowerDamage(r-1, c, u); }
+        }
+    }
+    for(let r=3; r>=0; r--){
+        for(let c=0; c<5; c++){
+            let u = state.board[r][c];
+            if(u && u.type==='minion' && u.owner==='p2' && r<3 && !state.board[r+1][c]){ state.board[r+1][c]=u; state.board[r][c]=null; checkTowerDamage(r+1, c, u); }
+        }
+    }
+}
+
+// ================= 点击交互 =================
+function towerClicked(pid) {
+    if(state.phase === 'wait_action_target' && state.selectedUnitPos) {
+        let sr = state.selectedUnitPos.r, sc = state.selectedUnitPos.c, actor = state.board[sr][sc], tt = state.players[pid].tower;
+        if(Math.abs(sr - tt.r) <= 1 && Math.abs(sc - tt.c) <= 1 && tt.owner !== actor.owner) {
+            state.players[state.turn].playArea.push(state.players[state.turn].hand.splice(state.selectedCardIndex, 1)[0]);
+            log(`⚔️ ${actor.name} 攻击了 ${tt.name}！`);
+            dealDamage(tt, tt.r, tt.c, getUnitStat(actor, 'atk'), actor, actor.owner);
+            endTurn();
+        } else alert("必须靠近防御塔才能攻击！");
+    }
+}
+
+function cellClicked(r, c) {
+    if(state.phase === 'game_over') return;
+    
+    if(state.phase === 'wait_respawn') {
+        let pid = state.respawnQueue[0];
+        if((pid==='p1'&&r===3) || (pid==='p2'&&r===0)) {
+            if(c !== 2 && !state.board[r][c]) {
+                let h = { ...state.players[pid].hero }; h.hp = h.maxHp; h.equips = []; state.players[pid].mana = h.maxMana;
+                state.board[r][c] = h; state.respawnQueue.shift();
+                log(`✨ ${h.name} 重新部署成功！`); processRespawnQueueOrContinue();
+            } else alert("必须是空位且不能在中央格！");
+        } return;
+    }
+
+    let u = state.board[r][c];
+    if(state.phase === 'idle') { if(u) showUnitInfo(r, c); return; }
+
+    if(state.phase === 'wait_equip_target' && u) {
+        let cid = state.players[state.turn].hand.splice(state.selectedCardIndex, 1)[0];
+        u.equips.push(cid); if(cardsData[cid].hpBonus) healUnit(u, cardsData[cid].hpBonus); 
+        log(`装备了 ${cardsData[cid].name}。`); endTurn();
+    } 
+    else if(state.phase === 'wait_action_unit') {
+        if(u && u.owner === state.turn && u.type !== 'minion') { state.selectedUnitPos = {r, c}; state.phase = 'wait_action_target'; updateUI(); } 
+        else alert("只能选择己方英雄或守卫！");
+    } 
+    else if (state.phase === 'wait_action_target') {
+        let sr = state.selectedUnitPos.r, sc = state.selectedUnitPos.c, actor = state.board[sr][sc];
+        if(Math.abs(r - sr) <= 1 && Math.abs(c - sc) <= 1 && !(r===sr && c===sc)) {
+            state.players[state.turn].playArea.push(state.players[state.turn].hand.splice(state.selectedCardIndex, 1)[0]);
+            if(!u) { 
+                state.board[r][c] = actor; state.board[sr][sc] = null; checkTowerDamage(r, c, actor); 
+                
+                // 剑圣被动触发：剑舞
+                if (actor.type === 'hero' && actor.owner === 'p1' && state.players.p1.hasPassive) {
+                    log(`⚔️ 剑圣触发【剑舞】，移动后可选择相邻敌方追加攻击！`);
+                    state.phase = 'wait_action_attack_after_move';
+                    state.selectedUnitPos = {r, c}; 
+                    updateUI(); return; 
+                }
+            } 
+            else { dealDamage(u, r, c, getUnitStat(actor, 'atk'), actor, actor.owner); }
+            endTurn();
+        } else alert("只能选择相邻格！");
+    }
+    else if (state.phase === 'wait_action_attack_after_move') {
+        let sr = state.selectedUnitPos.r, sc = state.selectedUnitPos.c, actor = state.board[sr][sc];
+        if(u && u.owner !== state.turn && Math.abs(r - sr) <= 1 && Math.abs(c - sc) <= 1) {
+            log(`⚔️ 剑圣【剑舞】追击了 ${u.name}！`);
+            dealDamage(u, r, c, getUnitStat(actor, 'atk'), actor, actor.owner);
+            endTurn();
+        } else alert("请选择相邻的敌方单位攻击，或点击【取消行动】结束回合。");
+    }
+    else if (state.phase === 'wait_skill_target') executeSkillWithTarget(state.pendingSkill, r, c, u);
+}
+
+function playCard(idx, pid) {
+    if(state.phase === 'game_over' || state.phase === 'wait_respawn' || state.turn !== pid || state.phase !== 'idle' || state.passedRound[pid]) return;
+    let cid = state.players[pid].hand[idx]; let c = cardsData[cid];
+    if(c.cost !== undefined && state.players[pid].mana < c.cost) return alert(`法力不足！`);
+    if (c.type === 'skill' && !findHeroPos(pid)) return alert("英雄已阵亡，无法使用技能！");
+
+    state.selectedCardIndex = idx;
+    
+    if(c.type === 'spell') {
+        state.players[pid].playArea.push(state.players[pid].hand.splice(idx, 1)[0]);
+        if(cid === 'mango') state.players[pid].mana++; else if(cid === 'salve') { let h = findHero(pid); if(h) healUnit(h, 1); }
+        endTurn();
+    } else if (c.type === 'action') { state.phase = 'wait_action_unit'; updateUI(); } 
+    else if (c.type === 'equip') { state.phase = 'wait_equip_target'; updateUI(); } 
+    else if (c.type === 'skill') {
+        state.phase = 'wait_skill_target'; state.pendingSkill = cid;
+        if(cid === 's_jugg_fury' || cid === 's_axe_call' || cid === 's_jugg_omni') executeSkillTargetless(cid, idx, pid); 
+        else updateUI();
+    }
+}
+
+// ================= 技能结算机制 =================
+function triggerTurnEndEffects(pid) {
+    for(let r=0; r<4; r++) {
+        for(let c=0; c<5; c++) {
+            let u = state.board[r][c]; if(!u) continue;
+            if(u.name === '治疗守卫' && u.owner === pid) getAdjacentCells(r, c).forEach(pos => { let t = state.board[pos.r][pos.c]; if(t && t.owner === pid && t.type !== 'ward') healUnit(t, 1); });
+            if(u.equips) u.equips.forEach(eid => {
+                if(eid === 'e_tango' && u.owner === pid && u.type === 'hero') healUnit(u, 1);
+                if(eid === 's_axe_hunger' && u.owner !== pid) dealDamage(u, r, c, 1, null, pid); 
+            });
+        }
+    }
+}
+
+function buyShopItem(idx) {
+    if(state.phase !== 'idle' || !state.shop[idx]) return;
+    let p = state.players[state.turn], cid = state.shop[idx];
+    if(p.loot >= cardsData[cid].price) { p.loot -= cardsData[cid].price; p.deck.unshift(cid); state.shop[idx] = null; log(`购买了 ${cardsData[cid].name}。`); endTurn(); }
+}
+
+function executeSkillTargetless(skillId, handIndex, pid) {
+    let p = state.players[pid]; p.mana -= cardsData[skillId].cost; p.playArea.push(p.hand.splice(handIndex, 1)[0]);
+    let hPos = findHeroPos(pid);
+    if(hPos) {
+        if(skillId === 's_jugg_fury') {
+            getAdjacentCells(hPos.r, hPos.c).forEach(pos => { let t = state.board[pos.r][pos.c]; if(t && t.owner !== pid) dealDamage(t, pos.r, pos.c, 2, p.hero, pid); });
+        } else if (skillId === 's_axe_call') {
+            let axe = state.board[hPos.r][hPos.c];
+            getAdjacentCells(hPos.r, hPos.c).forEach(pos => {
+                let target = state.board[pos.r][pos.c];
+                if(target && target.owner !== pid) {
+                    dealDamage(axe, hPos.r, hPos.c, getUnitStat(target, 'atk'), target, target.owner);
+                    getAdjacentCells(hPos.r, hPos.c).forEach(p2 => { let t2 = state.board[p2.r][p2.c]; if(t2 && t2.owner !== pid) dealDamage(t2, p2.r, p2.c, 2, axe, pid); });
+                }
+            });
+        } else if (skillId === 's_jugg_omni') {
+            log(`⚡ 剑圣发动终极技能【无敌斩】！`);
+            let atk = getUnitStat(p.hero, 'atk');
+            for(let i=0; i<4; i++) {
+                let enemies = [];
+                for(let r=0; r<4; r++) for(let c=0; c<5; c++) { let eu = state.board[r][c]; if(eu && eu.owner !== pid) enemies.push({r, c, u: eu}); }
+                if(enemies.length === 0) break;
+                let rand = enemies[Math.floor(Math.random() * enemies.length)];
+                log(`⚡ 无敌斩对 ${rand.u.name} 造成了 ${atk} 点伤害！`);
+                dealDamage(rand.u, rand.r, rand.c, atk, p.hero, pid);
+            }
+        }
+    }
+    endTurn();
+}
+
+function executeSkillWithTarget(skillId, r, c, u) {
+    let pid = state.turn, p = state.players[pid], hPos = findHeroPos(pid);
+    if(skillId === 's_jugg_ward' && (u || Math.abs(r-hPos.r)>1 || Math.abs(c-hPos.c)>1)) return alert("必须放相邻空位！");
+    if(skillId === 's_axe_hunger') {
+        if(!u || u.owner === pid) return alert("必须选择一个敌方单位！");
+        if(Math.abs(r-hPos.r)>1 || Math.abs(c-hPos.c)>1) return alert("目标必须在斧王相邻的8个方位内！");
+    }
+    if(skillId === 's_axe_culling') {
+        if(!u) return alert("必须选单位！");
+        if(Math.abs(r-hPos.r)>1 || Math.abs(c-hPos.c)>1) return alert("目标必须在斧王相邻的8个方位内！");
+        if(u.hp >= state.board[hPos.r][hPos.c].hp) return alert("目标生命必须低于斧王！");
+    }
+    
+    p.mana -= cardsData[skillId].cost; p.playArea.push(p.hand.splice(state.selectedCardIndex, 1)[0]);
+    if(skillId === 's_jugg_ward') state.board[r][c] = { type: 'ward', name: '治疗守卫', maxHp: 1, hp: 1, baseAtk: 0, owner: pid, equips: [] };
+    else if (skillId === 's_axe_hunger') u.equips.push(skillId);
+    else if (skillId === 's_axe_culling' && u.hp < state.board[hPos.r][hPos.c].hp) {
+        log(`🪓 【淘汰之刃】斩杀了 ${u.name}！`); dealDamage(u, r, c, 999, p.hero, pid);
+    }
+    endTurn();
+}
+
+function cancelAction() { 
+    if(state.phase === 'wait_respawn' || state.phase === 'game_over' || state.phase === 'wait_upgrade') return; 
+    if(state.phase === 'wait_action_attack_after_move') { log(`放弃了剑舞追击。`); endTurn(); return; }
+    state.phase = 'idle'; state.selectedCardIndex = -1; state.selectedUnitPos = null; state.pendingSkill = null; updateUI(); 
+}
+
+function getAdjacentCells(r, c) { let arr = []; for(let i=-1; i<=1; i++) for(let j=-1; j<=1; j++) if(!(i===0&&j===0) && r+i>=0 && r+i<4 && c+j>=0 && c+j<5) arr.push({r:r+i, c:c+j}); return arr; }
+function findHeroPos(pid) { for(let r=0;r<4;r++) for(let c=0;c<5;c++) if(state.board[r][c]?.type==='hero' && state.board[r][c].owner===pid) return {r,c}; return null; }
+function findHero(pid) { let pos = findHeroPos(pid); return pos ? state.board[pos.r][pos.c] : null; }
+function healUnit(unit, amount) { unit.hp = Math.min(getUnitStat(unit, 'maxHp'), unit.hp + amount); }
+function createMinion(o) { return { type: 'minion', name: '士兵', maxHp: 3, hp: 3, baseAtk: 1, owner: o, equips: [] }; }
+function drawCards(pid, amount) { let p = state.players[pid]; while(p.hand.length<amount){ if(!p.deck.length){ p.deck=shuffle([...p.discard]); p.discard=[]; } if(!p.deck.length) break; p.hand.push(p.deck.pop()); } }
+function shuffle(arr) { for(let i=arr.length-1; i>0; i--){ let j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+function log(msg) { let l = document.getElementById('log-content'); l.innerHTML += `<div>> ${msg}</div>`; l.scrollTop = l.scrollHeight; }
+
+// ================= UI 渲染 =================
+function updateUI() {
+    document.getElementById('round-num').innerText = state.roundNum;
+    
+    if(state.phase === 'game_over') {
+        document.getElementById('turn-indicator').innerText = `游戏结束`; document.getElementById('turn-indicator').style.color = '#7f8c8d';
+    } else if(state.phase === 'wait_respawn') {
+        document.getElementById('turn-indicator').innerText = `部署英雄阶段`; document.getElementById('turn-indicator').style.color = '#f1c40f';
+    } else {
+        document.getElementById('turn-indicator').innerText = `${state.players[state.turn].name} 的回合`;
+        document.getElementById('turn-indicator').style.color = state.turn === 'p1' ? 'var(--radiant)' : 'var(--dire)';
+    }
+
+    ['p1', 'p2'].forEach(pid => {
+        document.getElementById(`${pid}-mana`).innerText = state.players[pid].mana; document.getElementById(`${pid}-deck`).innerText = state.players[pid].deck.length; document.getElementById(`${pid}-discard`).innerText = state.players[pid].discard.length; document.getElementById(`${pid}-loot`).innerText = state.players[pid].loot; document.getElementById(`hp-tower-${pid}`).innerText = state.players[pid].tower.hp; document.getElementById(`deaths-${pid}`).innerText = state.players[pid].heroDeaths;
+        document.getElementById(`level-${pid}`).innerText = `Lv.${state.players[pid].level}`;
+        document.getElementById(`passive-${pid}`).innerText = state.players[pid].hasPassive ? `${pid==='p1'?'剑舞':'反击螺旋'}(已激活)` : `${pid==='p1'?'剑舞':'反击螺旋'}(未激活)`;
+        document.getElementById(`passive-${pid}`).style.color = state.players[pid].hasPassive ? 'var(--gold)' : '#aaa';
+    });
+
+    document.getElementById('btn-pass').disabled = state.phase !== 'idle';
+    document.getElementById('cancel-btn').style.display = (state.phase.startsWith('wait') && state.phase !== 'wait_respawn' && state.phase !== 'wait_upgrade') ? 'block' : 'none';
+
+    let shopDiv = document.getElementById('shop-container'); shopDiv.innerHTML = '';
+    state.shop.forEach((cid, idx) => {
+        let el = document.createElement('div'); el.className = 'shop-item';
+        if(cid) { let c = cardsData[cid]; el.innerHTML = `<b>${c.name}</b><span style="font-size:11px; color:#aaa;">${c.desc}</span><span class="shop-price">${c.price}币</span>`; el.onclick = () => buyShopItem(idx); } 
+        else { el.innerHTML = `<span style="color:#555; text-align:center;">已售罄</span>`; }
+        shopDiv.appendChild(el);
+    });
+
+    let activeP = state.phase === 'wait_respawn' ? state.respawnQueue[0] : state.turn;
+    document.getElementById('hand-owner-text').innerText = `${state.players[activeP].name} 手牌区`;
+    document.getElementById('hand-owner-text').style.color = activeP === 'p1' ? 'var(--radiant)' : 'var(--dire)';
+    renderCards('current-hand', state.players[activeP].hand, activeP, true);
+    renderCards('current-playarea', state.players[activeP].playArea, activeP, false);
+
+    let boardDiv = document.getElementById('board');
+    Array.from(boardDiv.children).forEach(c => c.remove());
+    
+    let t1 = document.getElementById('tower-p1'), t2 = document.getElementById('tower-p2');
+    t1.className = 'tower'; t2.className = 'tower';
+    if(state.phase === 'wait_action_target' && state.selectedUnitPos) {
+        let sr = state.selectedUnitPos.r, sc = state.selectedUnitPos.c;
+        if(Math.abs(sr - 4) <= 1 && Math.abs(sc - 2) <= 1) t1.classList.add('highlight-attack');
+        if(Math.abs(sr - (-1)) <= 1 && Math.abs(sc - 2) <= 1) t2.classList.add('highlight-attack');
+    }
+
+    for(let r=0; r<4; r++) {
+        for(let c=0; c<5; c++) {
+            let cellDiv = document.createElement('div'); cellDiv.className = 'cell';
+            
+            if((state.phase === 'wait_action_target' || state.phase === 'wait_action_attack_after_move') && state.selectedUnitPos && Math.abs(r-state.selectedUnitPos.r)<=1 && Math.abs(c-state.selectedUnitPos.c)<=1) {
+                cellDiv.classList.add(state.board[r][c] && state.board[r][c].owner !== state.turn ? 'highlight-attack' : 'highlight');
+            }
+            if(state.phase === 'wait_respawn') {
+                let rp = state.respawnQueue[0];
+                if((rp==='p1'&&r===3 && c!==2 && !state.board[r][c]) || (rp==='p2'&&r===0 && c!==2 && !state.board[r][c])) cellDiv.classList.add('highlight-respawn');
+            }
+
+            cellDiv.onclick = () => cellClicked(r, c);
+
+            let u = state.board[r][c];
+            if(u) {
+                let uDiv = document.createElement('div'); uDiv.className = `unit unit-${u.owner} ${u.type}`;
+                uDiv.innerHTML = `<span>${u.name}</span><div class="hp-bar">❤${u.hp}/${getUnitStat(u,'maxHp')} ⚔${getUnitStat(u,'atk')}</div>`;
+                if(u.equips && u.equips.length>0) { let eqb = document.createElement('div'); eqb.className = 'equip-indicator'; eqb.innerText = u.equips.length; uDiv.appendChild(eqb); }
+                cellDiv.appendChild(uDiv);
+            }
+            boardDiv.appendChild(cellDiv);
+        }
+    }
+}
+
+function renderCards(elId, arr, owner, isHand) {
+    let div = document.getElementById(elId); div.innerHTML = '';
+    arr.forEach((cid, idx) => {
+        let c = cardsData[cid]; let cDiv = document.createElement('div'); cDiv.className = 'card';
+        if(isHand && state.selectedCardIndex === idx) cDiv.classList.add('selected');
+        let costHtml = c.cost !== undefined ? `<div class="card-cost">${c.cost}</div>` : '';
+        cDiv.innerHTML = `${costHtml}<div class="card-title">${c.name}</div><div class="card-desc">${c.desc}</div>`;
+        if(isHand) cDiv.onclick = () => playCard(idx, owner);
+        div.appendChild(cDiv);
+    });
+}
+
+function showUnitInfo(r, c) {
+    let u = state.board[r][c]; if(!u) return;
+    document.getElementById('modal-title').innerText = `${u.name} (${u.owner==='p1'?'己方':'敌方'})`;
+    document.getElementById('modal-stats').innerText = `生命值: ${u.hp} / ${getUnitStat(u,'maxHp')} | 攻击力: ${getUnitStat(u,'atk')}`;
+    document.getElementById('modal-passive').innerText = u.type === 'minion' ? '被动：轮次结束时，对前方一格单位造成1点伤害。' : '';
+
+    let eqDiv = document.getElementById('modal-equips'); eqDiv.innerHTML = '';
+    if(!u.equips || u.equips.length===0) eqDiv.innerHTML = '<span style="color:#777">无状态/装备卡。</span>';
+    else u.equips.forEach(eid => eqDiv.innerHTML += `<div class="equip-tag"><b>${cardsData[eid].name}</b>: ${cardsData[eid].desc}</div>`);
+    
+    document.getElementById('overlay').style.display = 'block'; document.getElementById('unit-modal').style.display = 'block';
+}
+
+function closeAllModals() {
+    if(state.phase === 'wait_upgrade') return; // 升级强制操作
+    document.getElementById('unit-modal').style.display='none'; 
+    document.getElementById('upgrade-modal').style.display='none'; 
+    document.getElementById('overlay').style.display='none'; 
+}
+</script>
+</body>
+</html>
